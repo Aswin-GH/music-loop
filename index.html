@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Step Sequencer</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Syne:wght@400;500;700&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0e0e10;
+    --surface: #17171a;
+    --surface2: #1f1f24;
+    --border: rgba(255,255,255,0.08);
+    --border2: rgba(255,255,255,0.14);
+    --text: #e8e8ec;
+    --muted: #6b6b78;
+    --accent: #5DCAA5;
+    --accent-dim: rgba(93,202,165,0.15);
+
+    --l1: #5DCAA5;  --l1d: #0F6E56;
+    --l2: #85B7EB;  --l2d: #185FA5;
+    --l3: #F0997B;  --l3d: #993C1D;
+    --l4: #AFA9EC;  --l4d: #534AB7;
+
+    --playhead: rgba(255,255,255,0.12);
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    overflow: hidden;
+  }
+
+  #app {
+    display: flex;
+    flex-direction: column;
+    width: 100vw;
+    height: 100vh;
+    padding: 12px 16px 10px;
+    gap: 10px;
+  }
+
+  /* HEADER ROW */
+  #header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: nowrap;
+    flex-shrink: 0;
+  }
+
+  #title {
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    white-space: nowrap;
+    margin-right: 4px;
+  }
+
+  .sep { width: 1px; height: 20px; background: var(--border2); flex-shrink: 0; }
+
+  button, select {
+    font-family: var(--mono);
+    font-size: 12px;
+    background: var(--surface2);
+    color: var(--muted);
+    border: 0.5px solid var(--border2);
+    border-radius: 5px;
+    cursor: pointer;
+    outline: none;
+    transition: background 0.1s, color 0.1s, border-color 0.1s;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  button { padding: 5px 12px; }
+  button:hover { background: #26262c; color: var(--text); border-color: var(--border2); }
+  button:active { transform: scale(0.97); }
+
+  select {
+    padding: 5px 24px 5px 9px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236b6b78' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    color: var(--text);
+  }
+  select option { background: #1f1f24; }
+  select optgroup { color: var(--muted); font-size: 11px; }
+
+  #playBtn {
+    font-size: 16px;
+    padding: 5px 14px;
+    color: var(--accent);
+    border-color: var(--accent);
+    background: var(--accent-dim);
+    min-width: 42px;
+    text-align: center;
+  }
+  #playBtn:hover { background: rgba(93,202,165,0.25); }
+
+  #fsBtn {
+    font-size: 14px;
+    padding: 5px 10px;
+    min-width: 36px;
+    text-align: center;
+    margin-left: auto;
+  }
+
+  label {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    white-space: nowrap;
+    letter-spacing: 0.04em;
+  }
+
+  /* BPM */
+  #bpmWrap {
+    display: flex; align-items: center; gap: 8px;
+  }
+  #bpmSlider {
+    -webkit-appearance: none; appearance: none;
+    width: 90px; height: 3px;
+    background: var(--surface2);
+    border-radius: 2px; border: none; outline: none; cursor: pointer;
+    accent-color: var(--accent);
+  }
+  #bpmSlider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+  }
+  #bpmVal {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text);
+    min-width: 28px;
+  }
+
+  /* SUSTAIN TOGGLE */
+  #sustainBtn.on {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: var(--accent-dim);
+  }
+
+  /* LAYER CONTROLS */
+  #controls2 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    flex-wrap: nowrap;
+  }
+  #layerTabs { display: flex; gap: 4px; }
+  .layer-tab {
+    padding: 4px 11px;
+    font-size: 12px;
+    border-radius: 5px;
+    font-family: var(--mono);
+  }
+  #addLayerBtn, #removeLayerBtn {
+    padding: 4px 10px;
+    font-size: 13px;
+  }
+  #clearBtn { padding: 4px 12px; }
+
+  /* GRID AREA */
+  #gridWrap {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    gap: 6px;
+    align-items: stretch;
+  }
+
+  #noteLabels {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    flex-shrink: 0;
+    justify-content: stretch;
+  }
+  .note-label {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    min-width: 28px;
+    flex: 1;
+  }
+
+  #grid {
+    display: grid;
+    gap: 3px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .cell {
+    border-radius: 4px;
+    cursor: pointer;
+    border: 0.5px solid var(--border);
+    background: var(--surface2);
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.08s;
+  }
+  .cell:hover { border-color: var(--border2); }
+  .cell .seg {
+    position: absolute; top: 0; height: 100%;
+  }
+  .cell.playhead { background: var(--playhead); border-color: rgba(255,255,255,0.18); }
+
+  /* BEAT MARKERS — subtle visual grouping every 4 cols */
+  .beat-start { margin-left: 2px; }
+
+  /* LANDSCAPE LOCK on mobile */
+  @media (max-width: 767px) and (orientation: portrait) {
+    #rotate-msg {
+      display: flex;
+    }
+    #app { display: none; }
+  }
+
+  #rotate-msg {
+    display: none;
+    position: fixed; inset: 0;
+    background: var(--bg);
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    z-index: 999;
+  }
+  #rotate-msg svg { opacity: 0.5; animation: spin 2s ease-in-out infinite alternate; }
+  @keyframes spin { from { transform: rotate(-15deg); } to { transform: rotate(15deg); } }
+  #rotate-msg p {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+  }
+
+  /* FULLSCREEN tweaks */
+  :fullscreen #app, :-webkit-full-screen #app { padding: 16px 20px 14px; }
+  :fullscreen #fsBtn, :-webkit-full-screen #fsBtn { opacity: 0.5; }
+</style>
+</head>
+<body>
+
+<div id="rotate-msg">
+  <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="10" y="6" width="28" height="36" rx="4" stroke="#5DCAA5" stroke-width="2"/>
+    <path d="M34 38 L42 38 M38 34 L42 38 L38 42" stroke="#5DCAA5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+  <p>rotate to landscape</p>
+</div>
+
+<div id="app">
+
+  <div id="header">
+    <span id="title">Sequencer</span>
+    <div class="sep"></div>
+    <button id="playBtn">&#9654;</button>
+    <div class="sep"></div>
+    <div id="bpmWrap">
+      <label>BPM</label>
+      <input type="range" id="bpmSlider" min="40" max="200" value="90" step="1" />
+      <span id="bpmVal">90</span>
+    </div>
+    <div class="sep"></div>
+    <label>Cols</label>
+    <select id="colSelect">
+      <option value="8">8</option>
+      <option value="16" selected>16</option>
+      <option value="24">24</option>
+      <option value="32">32</option>
+    </select>
+    <div class="sep"></div>
+    <label>Scale</label>
+    <select id="scaleSelect">
+      <optgroup label="Familiar">
+        <option value="pentatonic">Pentatonic maj</option>
+        <option value="pentatonicMinor">Pentatonic min</option>
+        <option value="major">Major</option>
+        <option value="minor">Natural minor</option>
+        <option value="harmonicMinor">Harmonic minor</option>
+        <option value="melodicMinor">Melodic minor</option>
+      </optgroup>
+      <optgroup label="Modal">
+        <option value="dorian">Dorian</option>
+        <option value="phrygian">Phrygian</option>
+        <option value="lydian">Lydian</option>
+        <option value="mixolydian">Mixolydian</option>
+        <option value="locrian">Locrian</option>
+      </optgroup>
+      <optgroup label="Character">
+        <option value="blues">Blues</option>
+        <option value="wholeTone">Whole tone</option>
+        <option value="diminished">Diminished</option>
+        <option value="japanese">Japanese (In)</option>
+        <option value="arabic">Arabic (Hijaz)</option>
+        <option value="chromatic">Chromatic</option>
+      </optgroup>
+    </select>
+    <div class="sep"></div>
+    <label>Wave</label>
+    <select id="waveSelect">
+      <option value="sine">Sine</option>
+      <option value="triangle">Triangle</option>
+      <option value="square">Square</option>
+      <option value="sawtooth">Sawtooth</option>
+    </select>
+    <div class="sep"></div>
+    <label>Sustain</label>
+    <button id="sustainBtn">Off</button>
+    <button id="fsBtn" title="Fullscreen">&#x26F6;</button>
+  </div>
+
+  <div id="controls2">
+    <label>Layer</label>
+    <div id="layerTabs"></div>
+    <button id="addLayerBtn">+</button>
+    <button id="removeLayerBtn">−</button>
+    <div class="sep"></div>
+    <button id="clearBtn">Clear</button>
+  </div>
+
+  <div id="gridWrap">
+    <div id="noteLabels"></div>
+    <div id="grid"></div>
+  </div>
+
+</div>
+
+<script>
+const ROWS = 8, MAX_LAYERS = 4;
+
+const scales = {
+  pentatonic:      [64,62,60,57,55,53,52,48],
+  pentatonicMinor: [63,60,58,55,53,51,48,44],
+  major:           [67,65,64,62,60,59,57,55],
+  minor:           [67,65,63,62,60,58,57,55],
+  harmonicMinor:   [67,66,63,62,60,58,57,55],
+  melodicMinor:    [67,66,65,62,60,58,57,55],
+  dorian:          [67,65,63,62,60,58,57,54],
+  phrygian:        [67,65,63,61,60,58,56,55],
+  lydian:          [67,66,64,62,60,59,57,55],
+  mixolydian:      [67,65,64,62,60,59,57,55],
+  locrian:         [66,65,63,61,60,58,56,54],
+  blues:           [67,65,63,62,60,58,55,53],
+  wholeTone:       [66,64,62,60,58,56,54,52],
+  diminished:      [67,65,63,61,60,58,56,54],
+  japanese:        [67,62,60,58,55,50,48,46],
+  arabic:          [67,66,63,62,60,59,56,55],
+  chromatic:       [67,66,65,64,63,62,61,60]
+};
+
+const noteStr = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const noteNames = {};
+for (let m = 36; m <= 84; m++) noteNames[m] = noteStr[m%12] + Math.floor(m/12-1);
+
+const LC = [
+  {a:'#5DCAA5', p:'#0F6E56'},
+  {a:'#85B7EB', p:'#185FA5'},
+  {a:'#F0997B', p:'#993C1D'},
+  {a:'#AFA9EC', p:'#534AB7'}
+];
+
+let COLS = 16;
+let layers = [Array.from({length:ROWS}, () => Array(32).fill(false))];
+let layerWaves = ['sine'];
+let activeLayer = 0;
+let playing = false;
+let currentCol = -1;
+let intervalId = null;
+let audioCtx = null;
+let currentScale = scales.pentatonic;
+let sustainOn = false;
+let activeNodes = {};
+
+const $ = id => document.getElementById(id);
+
+function getCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+function playNote(midi, wave, time) {
+  const ctx = getCtx();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.connect(gain); gain.connect(ctx.destination);
+  osc.type = wave;
+  osc.frequency.setValueAtTime(440 * Math.pow(2,(midi-69)/12), time);
+  const vol = wave==='square'?0.1:wave==='sawtooth'?0.13:0.26;
+  gain.gain.setValueAtTime(vol, time);
+  gain.gain.exponentialRampToValueAtTime(0.001, time+0.45);
+  osc.start(time); osc.stop(time+0.5);
+}
+
+function startSustained(row, midi, wave) {
+  const key = row+'_'+wave;
+  if (activeNodes[key]) return;
+  const ctx = getCtx();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.connect(gain); gain.connect(ctx.destination);
+  osc.type = wave;
+  osc.frequency.setValueAtTime(440*Math.pow(2,(midi-69)/12), ctx.currentTime);
+  gain.gain.setValueAtTime(wave==='square'?0.1:wave==='sawtooth'?0.13:0.26, ctx.currentTime);
+  osc.start();
+  activeNodes[key] = {osc, gain};
+}
+
+function stopSustained(row, wave) {
+  const key = row+'_'+wave;
+  const n = activeNodes[key]; if (!n) return;
+  const ctx = getCtx();
+  n.gain.gain.setValueAtTime(n.gain.gain.value, ctx.currentTime);
+  n.gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+0.08);
+  n.osc.stop(ctx.currentTime+0.1);
+  delete activeNodes[key];
+}
+
+function stopAllSustained() {
+  Object.keys(activeNodes).forEach(k => {
+    const [row, wave] = k.split('_');
+    stopSustained(parseInt(row), wave);
+  });
+}
+
+function buildLabels() {
+  const el = $('noteLabels'); el.innerHTML = '';
+  currentScale.forEach(midi => {
+    const d = document.createElement('div');
+    d.className = 'note-label';
+    d.textContent = noteNames[midi] || midi;
+    el.appendChild(d);
+  });
+}
+
+function buildLayerTabs() {
+  const el = $('layerTabs'); el.innerHTML = '';
+  layers.forEach((_, i) => {
+    const c = LC[i], sel = i===activeLayer;
+    const btn = document.createElement('button');
+    btn.className = 'layer-tab';
+    btn.textContent = 'L'+(i+1);
+    btn.style.cssText = `border-color:${c.a};background:${sel?c.a+'33':'transparent'};color:${sel?c.a:'#6b6b78'};font-weight:${sel?'500':'400'};`;
+    btn.addEventListener('click', () => { activeLayer=i; buildLayerTabs(); syncWave(); renderGrid(); });
+    el.appendChild(btn);
+  });
+  $('removeLayerBtn').style.opacity = layers.length>1?'1':'0.3';
+  $('addLayerBtn').style.opacity = layers.length<MAX_LAYERS?'1':'0.3';
+}
+
+function syncWave() { $('waveSelect').value = layerWaves[activeLayer]||'sine'; }
+
+function buildGrid() {
+  const g = $('grid'); g.innerHTML = '';
+  g.style.gridTemplateColumns = `repeat(${COLS}, minmax(0,1fr))`;
+  for (let r=0; r<ROWS; r++) {
+    for (let c=0; c<COLS; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell' + (c%4===0 && c>0?' beat-start':'');
+      cell.addEventListener('click', () => { layers[activeLayer][r][c]=!layers[activeLayer][r][c]; renderCell(r,c); });
+      g.appendChild(cell);
+    }
+  }
+}
+
+function renderCell(r, c) {
+  const g = $('grid');
+  const cell = g.children[r*COLS+c]; if (!cell) return;
+  const isCur = c===currentCol;
+  cell.innerHTML = '';
+  cell.className = 'cell' + (c%4===0&&c>0?' beat-start':'') + (isCur?' playhead':'');
+  const active = layers.map((l,i)=>l[r][c]?i:-1).filter(i=>i>=0);
+  if (active.length===0) return;
+  if (active.length===1) {
+    const col = LC[active[0]];
+    cell.style.background = isCur?col.p:col.a;
+    cell.style.borderColor = isCur?col.p:col.a+'88';
+    return;
+  }
+  cell.style.background = 'transparent';
+  cell.style.borderColor = 'rgba(255,255,255,0.18)';
+  const sw = Math.floor(100/active.length);
+  active.forEach((li, idx) => {
+    const col = LC[li], isLast = idx===active.length-1;
+    const seg = document.createElement('div');
+    seg.className = 'seg';
+    seg.style.cssText = `left:${idx*sw}%;width:${isLast?100-idx*sw:sw}%;background:${isCur?col.p:col.a};`;
+    cell.appendChild(seg);
+  });
+}
+
+function renderGrid() {
+  for (let r=0; r<ROWS; r++)
+    for (let c=0; c<COLS; c++) renderCell(r,c);
+}
+
+function step() {
+  const prev = currentCol;
+  currentCol = (currentCol+1)%COLS;
+  const ctx = getCtx(), now = ctx.currentTime;
+  if (sustainOn) {
+    const nowActive = new Set();
+    layers.forEach((layer, li) => {
+      const wave = layerWaves[li]||'sine';
+      for (let r=0; r<ROWS; r++) {
+        if (layer[r][currentCol]) {
+          nowActive.add(r+'_'+wave);
+          if (!(prev>=0 && layer[r][prev])) startSustained(r, currentScale[r], wave);
+        }
+      }
+    });
+    Object.keys(activeNodes).forEach(k => {
+      if (!nowActive.has(k)) { const [row,wave]=k.split('_'); stopSustained(parseInt(row),wave); }
+    });
+  } else {
+    layers.forEach((layer, li) => {
+      const wave = layerWaves[li]||'sine';
+      for (let r=0; r<ROWS; r++)
+        if (layer[r][currentCol]) playNote(currentScale[r], wave, now);
+    });
+  }
+  for (let r=0; r<ROWS; r++) {
+    if (prev>=0) renderCell(r,prev);
+    renderCell(r,currentCol);
+  }
+}
+
+function startPlay() {
+  const bpm = parseInt($('bpmSlider').value);
+  intervalId = setInterval(step, Math.round(60000/bpm/2));
+}
+function stopPlay() {
+  clearInterval(intervalId); intervalId=null;
+  currentCol=-1; stopAllSustained(); renderGrid();
+}
+
+$('playBtn').addEventListener('click', () => {
+  playing = !playing;
+  $('playBtn').innerHTML = playing ? '&#9646;&#9646;' : '&#9654;';
+  if (playing) startPlay(); else stopPlay();
+});
+
+$('bpmSlider').addEventListener('input', e => {
+  $('bpmVal').textContent = e.target.value;
+  if (playing) { clearInterval(intervalId); startPlay(); }
+});
+
+$('colSelect').addEventListener('change', e => {
+  COLS = parseInt(e.target.value);
+  if (currentCol>=COLS) currentCol=-1;
+  buildGrid(); renderGrid();
+});
+
+$('clearBtn').addEventListener('click', () => {
+  layers[activeLayer] = Array.from({length:ROWS},()=>Array(32).fill(false));
+  renderGrid();
+});
+
+$('addLayerBtn').addEventListener('click', () => {
+  if (layers.length>=MAX_LAYERS) return;
+  layers.push(Array.from({length:ROWS},()=>Array(32).fill(false)));
+  layerWaves.push('sine');
+  activeLayer = layers.length-1;
+  buildLayerTabs(); syncWave(); renderGrid();
+});
+
+$('removeLayerBtn').addEventListener('click', () => {
+  if (layers.length<=1) return;
+  layers.splice(activeLayer,1);
+  layerWaves.splice(activeLayer,1);
+  activeLayer = Math.min(activeLayer, layers.length-1);
+  buildLayerTabs(); syncWave(); renderGrid();
+});
+
+$('waveSelect').addEventListener('change', e => { layerWaves[activeLayer]=e.target.value; });
+
+$('scaleSelect').addEventListener('change', e => {
+  currentScale = scales[e.target.value];
+  buildLabels(); renderGrid();
+});
+
+$('sustainBtn').addEventListener('click', () => {
+  sustainOn = !sustainOn;
+  const btn = $('sustainBtn');
+  btn.textContent = sustainOn?'On':'Off';
+  btn.classList.toggle('on', sustainOn);
+  if (!sustainOn) stopAllSustained();
+});
+
+$('fsBtn').addEventListener('click', () => {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
+  } else {
+    document.exitFullscreen && document.exitFullscreen();
+  }
+});
+
+document.addEventListener('fullscreenchange', () => {
+  $('fsBtn').innerHTML = document.fullscreenElement ? '&#x2715;' : '&#x26F6;';
+});
+
+buildLabels(); buildLayerTabs(); buildGrid(); renderGrid();
+</script>
+</body>
+</html>
