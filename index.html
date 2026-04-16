@@ -7,7 +7,7 @@
 <style>
   @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Syne:wght@400;500;700&display=swap');
 
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
   :root {
     --bg: #0e0e10;
@@ -201,6 +201,7 @@
     color: var(--muted);
     min-width: 28px;
     flex: 1;
+    min-height: 0;
   }
 
   #grid {
@@ -208,6 +209,8 @@
     gap: 3px;
     flex: 1;
     min-width: 0;
+    min-height: 0;
+    grid-template-rows: repeat(8, minmax(0, 1fr));
   }
 
   .cell {
@@ -218,6 +221,10 @@
     position: relative;
     overflow: hidden;
     transition: border-color 0.08s;
+    min-height: 0;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
   }
   .cell:hover { border-color: var(--border2); }
   .cell .seg {
@@ -477,8 +484,14 @@ function buildGrid() {
   for (let r=0; r<ROWS; r++) {
     for (let c=0; c<COLS; c++) {
       const cell = document.createElement('div');
-      cell.className = 'cell' + (c%4===0 && c>0?' beat-start':'');
-      cell.addEventListener('click', () => { layers[activeLayer][r][c]=!layers[activeLayer][r][c]; renderCell(r,c); });
+      cell.className = 'cell' + (c%4===0 && c>0 ? ' beat-start' : '');
+      const toggle = (e) => {
+        e.preventDefault();
+        layers[activeLayer][r][c] = !layers[activeLayer][r][c];
+        renderCell(r, c);
+      };
+      cell.addEventListener('touchend', toggle, {passive: false});
+      cell.addEventListener('click', toggle);
       g.appendChild(cell);
     }
   }
@@ -489,6 +502,8 @@ function renderCell(r, c) {
   const cell = g.children[r*COLS+c]; if (!cell) return;
   const isCur = c===currentCol;
   cell.innerHTML = '';
+  cell.style.background = '';
+  cell.style.borderColor = '';
   cell.className = 'cell' + (c%4===0&&c>0?' beat-start':'') + (isCur?' playhead':'');
   const active = layers.map((l,i)=>l[r][c]?i:-1).filter(i=>i>=0);
   if (active.length===0) return;
