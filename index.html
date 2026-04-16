@@ -357,7 +357,7 @@
 </div>
 
 <script>
-const ROWS = 8, MAX_LAYERS = 4;
+const ROWS = 8;
 
 const scales = {
   pentatonic:      [64,62,60,57,55,53,52,48],
@@ -391,8 +391,13 @@ const LC = [
 ];
 
 let COLS = 16;
-let layers = [Array.from({length:ROWS}, () => Array(32).fill(false))];
-let layerWaves = ['sine'];
+
+const SLOTS = 4;
+const emptyGrid = () => Array.from({length:ROWS}, () => Array(32).fill(false));
+
+let layers = {
+  0: { grid: emptyGrid(), wave: 'sine' }
+};
 let activeLayer = 0;
 let playing = false;
 let currentCol = -1;
@@ -401,6 +406,9 @@ let audioCtx = null;
 let currentScale = scales.pentatonic;
 let sustainOn = false;
 let activeNodes = {};
+
+function slotIds() { return Object.keys(layers).map(Number).sort((a,b)=>a-b); }
+function nextFreeSlot() { for(let i=0;i<SLOTS;i++) if(!layers[i]) return i; return -1; }
 
 const $ = id => document.getElementById(id);
 
@@ -465,7 +473,7 @@ function buildLabels() {
 
 function buildLayerTabs() {
   const el = $('layerTabs'); el.innerHTML = '';
-  layers.forEach((_, i) => {
+  slotIds().forEach(i => {
     const c = LC[i], sel = i===activeLayer;
     const btn = document.createElement('button');
     btn.className = 'layer-tab';
@@ -474,11 +482,11 @@ function buildLayerTabs() {
     btn.addEventListener('click', () => { activeLayer=i; buildLayerTabs(); syncWave(); renderGrid(); });
     el.appendChild(btn);
   });
-  $('removeLayerBtn').style.opacity = layers.length>1?'1':'0.3';
-  $('addLayerBtn').style.opacity = layers.length<MAX_LAYERS?'1':'0.3';
+  $('removeLayerBtn').style.opacity = slotIds().length>1?'1':'0.3';
+  $('addLayerBtn').style.opacity = slotIds().length<SLOTS?'1':'0.3';
 }
 
-function syncWave() { $('waveSelect').value = layerWaves[activeLayer]||'sine'; }
+function syncWave() { $('waveSelect').value = (layers[activeLayer]||{}).wave||'sine'; }
 
 function buildGrid() {
   const g = $('grid'); g.innerHTML = '';
@@ -489,7 +497,7 @@ function buildGrid() {
       cell.className = 'cell' + (c%4===0 && c>0 ? ' beat-start' : '');
       const toggle = (e) => {
         e.preventDefault();
-        layers[activeLayer][r][c] = !layers[activeLayer][r][c];
+        layers[activeLayer].grid[r][c] = !layers[activeLayer].grid[r][c];
         renderCell(r, c);
       };
       cell.addEventListener('touchend', toggle, {passive: false});
@@ -507,7 +515,7 @@ function renderCell(r, c) {
   cell.style.background = '';
   cell.style.borderColor = '';
   cell.className = 'cell' + (c%4===0&&c>0?' beat-start':'') + (isCur?' playhead':'');
-  const active = layers.map((l,i)=>l[r][c]?i:-1).filter(i=>i>=0);
+  const active = slotIds().filter(i => layers[i].grid[r][c]);
   if (active.length===0) return;
   if (active.length===1) {
     const col = LC[active[0]];
@@ -538,12 +546,12 @@ function step() {
   const ctx = getCtx(), now = ctx.currentTime;
   if (sustainOn) {
     const nowActive = new Set();
-    layers.forEach((layer, li) => {
-      const wave = layerWaves[li]||'sine';
+    slotIds().forEach(li => {
+      const wave = layers[li].wave;
       for (let r=0; r<ROWS; r++) {
-        if (layer[r][currentCol]) {
+        if (layers[li].grid[r][currentCol]) {
           nowActive.add(r+'_'+wave);
-          if (!(prev>=0 && layer[r][prev])) startSustained(r, currentScale[r], wave);
+          if (!(prev>=0 && layers[li].grid[r][prev])) startSustained(r, currentScale[r], wave);
         }
       }
     });
@@ -551,10 +559,10 @@ function step() {
       if (!nowActive.has(k)) { const [row,wave]=k.split('_'); stopSustained(parseInt(row),wave); }
     });
   } else {
-    layers.forEach((layer, li) => {
-      const wave = layerWaves[li]||'sine';
+    slotIds().forEach(li => {
+      const wave = layers[li].wave;
       for (let r=0; r<ROWS; r++)
-        if (layer[r][currentCol]) playNote(currentScale[r], wave, now);
+        if (layers[li].grid[r][currentCol]) playNote(currentScale[r], wave, now);
     });
   }
   for (let r=0; r<ROWS; r++) {
@@ -590,27 +598,27 @@ $('colSelect').addEventListener('change', e => {
 });
 
 $('clearBtn').addEventListener('click', () => {
-  layers[activeLayer] = Array.from({length:ROWS},()=>Array(32).fill(false));
+  layers[activeLayer].grid = emptyGrid();
   renderGrid();
 });
 
 $('addLayerBtn').addEventListener('click', () => {
-  if (layers.length>=MAX_LAYERS) return;
-  layers.push(Array.from({length:ROWS},()=>Array(32).fill(false)));
-  layerWaves.push('sine');
-  activeLayer = layers.length-1;
+  const slot = nextFreeSlot();
+  if (slot < 0) return;
+  layers[slot] = { grid: emptyGrid(), wave: 'sine' };
+  activeLayer = slot;
   buildLayerTabs(); syncWave(); renderGrid();
 });
 
 $('removeLayerBtn').addEventListener('click', () => {
-  if (layers.length<=1) return;
-  layers.splice(activeLayer,1);
-  layerWaves.splice(activeLayer,1);
-  activeLayer = Math.min(activeLayer, layers.length-1);
+  if (slotIds().length <= 1) return;
+  delete layers[activeLayer];
+  const remaining = slotIds();
+  activeLayer = remaining[Math.max(0, remaining.indexOf(activeLayer)-1)] ?? remaining[0];
   buildLayerTabs(); syncWave(); renderGrid();
 });
 
-$('waveSelect').addEventListener('change', e => { layerWaves[activeLayer]=e.target.value; });
+$('waveSelect').addEventListener('change', e => { layers[activeLayer].wave = e.target.value; });
 
 $('scaleSelect').addEventListener('change', e => {
   currentScale = scales[e.target.value];
