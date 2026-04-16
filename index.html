@@ -347,6 +347,10 @@
     <button id="removeLayerBtn">−</button>
     <div class="sep"></div>
     <button id="clearBtn">Clear</button>
+    <div class="sep"></div>
+    <input type="number" id="cyclesInput" value="10" min="1" max="99" style="width:44px;padding:4px 6px;font-family:var(--mono);font-size:12px;background:var(--surface2);color:var(--text);border:0.5px solid var(--border2);border-radius:5px;text-align:center;" />
+    <label>cycles</label>
+    <button id="exportBtn" style="color:var(--accent);border-color:var(--accent);background:var(--accent-dim);">&#8681; WAV</button>
   </div>
 
   <div id="gridWrap">
@@ -644,6 +648,111 @@ $('fsBtn').addEventListener('click', () => {
 document.addEventListener('fullscreenchange', () => {
   $('fsBtn').innerHTML = document.fullscreenElement ? '&#x2715;' : '&#x26F6;';
 });
+
+function encodeWAV(buffer) {
+  const numCh = buffer.numberOfChannels;
+  const sampleRate = buffer.sampleRate;
+  const samples = buffer.length;
+  const bitsPerSample = 16;
+  const byteRate = sampleRate * numCh * bitsPerSample / 8;
+  const blockAlign = numCh * bitsPerSample / 8;
+  const dataSize = samples * numCh * 2;
+  const ab = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(ab);
+  const writeStr = (o, s) => { for (let i=0;i<s.length;i++) view.setUint8(o+i, s.charCodeAt(i)); };
+  writeStr(0,'RIFF'); view.setUint32(4, 36+dataSize, true);
+  writeStr(8,'WAVE'); writeStr(12,'fmt ');
+  view.setUint32(16,16,true); view.setUint16(20,1,true);
+  view.setUint16(22,numCh,true); view.setUint32(24,sampleRate,true);
+  view.setUint32(28,byteRate,true); view.setUint16(32,blockAlign,true);
+  view.setUint16(34,bitsPerSample,true); writeStr(36,'data');
+  view.setUint32(40,dataSize,true);
+  let offset = 44;
+  for (let i=0; i<samples; i++) {
+    for (let ch=0; ch<numCh; ch++) {
+      const s = Math.max(-1, Math.min(1, buffer.getChannelData(ch)[i]));
+      view.setInt16(offset, s < 0 ? s*0x8000 : s*0x7FFF, true);
+      offset += 2;
+    }
+  }
+  return new Blob([ab], {type:'audio/wav'});
+}
+
+async function exportWAV() {
+  const btn = $('exportBtn');
+  const cycles = Math.max(1, parseInt($('cyclesInput').value) || 10);
+  const bpm = parseInt($('bpmSlider').value);
+  const stepDur = 60 / bpm / 2;
+  const totalSteps = COLS * cycles;
+  const sampleRate = 44100;
+  const totalDuration = totalSteps * stepDur + 0.6;
+  const offCtx = new OfflineAudioContext(2, Math.ceil(sampleRate * totalDuration), sampleRate);
+
+  const scheduleNote = (midi, wave, startTime, duration) => {
+    const freq = 440 * Math.pow(2, (midi-69)/12);
+    const osc = offCtx.createOscillator();
+    const gain = offCtx.createGain();
+    osc.connect(gain); gain.connect(offCtx.destination);
+    osc.type = wave;
+    osc.frequency.setValueAtTime(freq, startTime);
+    const vol = wave==='square'?0.1:wave==='sawtooth'?0.13:0.26;
+    const decayStart = startTime + Math.max(0, duration - 0.05);
+    const decayEnd = startTime + duration + 0.05;
+    gain.gain.setValueAtTime(vol, startTime);
+    gain.gain.setValueAtTime(vol, decayStart);
+    gain.gain.exponentialRampToValueAtTime(0.001, decayEnd);
+    osc.start(startTime); osc.stop(decayEnd + 0.01);
+  };
+
+  slotIds().forEach(li => {
+    const wave = layers[li].wave;
+    for (let r=0; r<ROWS; r++) {
+      if (sustainOn) {
+        let noteStart = null;
+        for (let step=0; step<totalSteps+1; step++) {
+          const c = step % COLS;
+          const active = step < totalSteps && layers[li].grid[r][c];
+          const t = step * stepDur;
+          if (active && noteStart === null) {
+            noteStart = t;
+          } else if (!active && noteStart !== null) {
+            scheduleNote(currentScale[r], wave, noteStart, t - noteStart);
+            noteStart = null;
+          }
+        }
+      } else {
+        for (let step=0; step<totalSteps; step++) {
+          const c = step % COLS;
+          if (layers[li].grid[r][c]) {
+            scheduleNote(currentScale[r], wave, step * stepDur, 0.4);
+          }
+        }
+      }
+    }
+  });
+
+  btn.textContent = '...';
+  btn.style.opacity = '0.5';
+  btn.disabled = true;
+
+  try {
+    const rendered = await offCtx.startRendering();
+    const blob = encodeWAV(rendered);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'sequencer.wav';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  } catch(e) {
+    console.error('Export failed', e);
+  }
+
+  btn.innerHTML = '&#8681; WAV';
+  btn.style.opacity = '1';
+  btn.disabled = false;
+}
+
+$('exportBtn').addEventListener('click', exportWAV);
 
 buildLabels(); buildLayerTabs(); buildGrid(); renderGrid();
 </script>
